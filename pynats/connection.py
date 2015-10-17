@@ -26,7 +26,8 @@ class Connection(object):
         ssl_required=False,
         verbose=False,
         pedantic=False,
-        socket_keepalive=False
+        socket_keepalive=False,
+        raw=False
     ):
         self._connect_timeout = None
         self._socket_keepalive = socket_keepalive
@@ -34,6 +35,7 @@ class Connection(object):
         self._socket_file = None
         self._subscriptions = {}
         self._next_sid = 1
+        self._raw = raw
         self._options = {
             'url': urlparse.urlsplit(url),
             'name': name,
@@ -236,13 +238,18 @@ class Connection(object):
         pass
 
     def _send(self, command):
-        SocketError.wrap(self._socket.sendall, (command + '\r\n').encode('utf-8'))
+        msg = command + '\r\n'
+        if not self._raw:
+            msg = msg.encode('utf-8')
+        SocketError.wrap(self._socket.sendall, msg)
 
     def _readline(self):
         lines = []
 
         while True:
-            line = self._socket_file.readline().decode('utf-8')
+            line = self._socket_file.readline()
+            if not self._raw:
+                line = line.decode('utf-8')
             lines.append(line)
 
             if line.endswith("\r\n"):
@@ -257,7 +264,9 @@ class Connection(object):
         if command not in expected_commands:
             raise UnexpectedResponse(line)
 
-        result = command.match(line.encode('utf-8'))
+        if not self._raw:
+            line = line.encode('utf-8')
+        result = command.match(line)
         if result is None:
             raise UnknownResponse(command.pattern, line)
 
